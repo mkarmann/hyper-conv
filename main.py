@@ -46,9 +46,9 @@ class HyperConv(nn.Module):
                 nn.LeakyReLU(),
                 nn.Conv2d(16, 16, (1, 1)),
                 nn.LeakyReLU(),
-                nn.Conv2d(16, 4, (1, 1)),
+                nn.Conv2d(16, 16, (1, 1)),
                 nn.LeakyReLU(),
-                nn.Conv2d(4, num_c, (1, 1))
+                nn.Conv2d(16, num_c, (1, 1))
             )
         else:
             self.main = nn.Conv2d(in_channels, out_channels, kernel_size, **kwargs)
@@ -115,7 +115,9 @@ class MNISTClassifier(pl.LightningModule):
         return x
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        # Lower lr for more stability (1e-3 created to much variance with only hypernet)
+        # Maybe using weight decay: weight_decay=1e-5
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-5)
         return optimizer
 
     def training_step(self, train_batch, batch_idx):
