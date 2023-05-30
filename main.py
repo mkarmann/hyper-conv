@@ -16,16 +16,31 @@ from torchvision import transforms
 import pytorch_lightning as pl
 
 
+class HyperConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, use_hyper_net=False, *args, **kwargs):
+        """
+        :param in_channels: in channels of the convolution
+        :param out_channels: out channels of the convolution
+        :param kernel_size: kernel size of the convolution
+        :param kwargs:
+        """
+        super().__init__()
+        self.main = nn.Conv2d(in_channels, out_channels, kernel_size, **kwargs)
+
+    def forward(self, x):
+        return self.main(x)
+
+
 class ResidualBlock(nn.Module):
     def __init__(self, ch, kernel_size):
         super().__init__()
         self.main = nn.Sequential(
             nn.BatchNorm2d(ch),
             nn.ReLU(),
-            nn.Conv2d(ch, ch, kernel_size, padding='same', bias=False),
+            HyperConv(ch, ch, kernel_size, padding='same', bias=False),
             nn.BatchNorm2d(ch),
             nn.ReLU(),
-            nn.Conv2d(ch, ch, kernel_size, padding='same', bias=False),
+            HyperConv(ch, ch, kernel_size, padding='same', bias=False),
         )
 
     def forward(self, x):
@@ -38,22 +53,22 @@ class MNISTClassifier(pl.LightningModule):
         ch = 8
         kernel_size = (3, 3)
         self.main = nn.Sequential(
-            nn.Conv2d(1, ch, kernel_size, padding='same', bias=False),
+            nn.Conv2d(1, ch, (1, 1), padding='same'),
             ResidualBlock(ch, kernel_size),
             ResidualBlock(ch, kernel_size),
             nn.BatchNorm2d(ch),
             nn.ReLU(),
-            nn.Conv2d(ch, ch*2, kernel_size, padding='same', bias=False),
+            nn.Conv2d(ch, ch*2, (1, 1), padding='same', bias=False),
             nn.MaxPool2d(2, 2),
             ResidualBlock(ch*2, kernel_size),
             ResidualBlock(ch*2, kernel_size),
             nn.BatchNorm2d(ch*2),
             nn.ReLU(),
-            nn.Conv2d(ch*2, ch*4, kernel_size, padding='same', bias=False),
+            nn.Conv2d(ch*2, ch*4, (1, 1), padding='same', bias=False),
             nn.MaxPool2d(2, 2),
             ResidualBlock(ch * 4, kernel_size),
             ResidualBlock(ch * 4, kernel_size),
-            nn.Conv2d(ch * 4, ch * 8, kernel_size, padding='same', bias=False),
+            nn.Conv2d(ch * 4, ch * 8, (1, 1), padding='same', bias=False),
             nn.MaxPool2d(2, 2),
             ResidualBlock(ch * 8, kernel_size),
             ResidualBlock(ch * 8, kernel_size),
