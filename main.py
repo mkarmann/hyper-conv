@@ -25,32 +25,53 @@ class HyperConv(nn.Module):
         :param kwargs:
         """
         super().__init__()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.use_hyper_net = use_hyper_net
+        self.kwargs = kwargs
+
         if use_hyper_net:
             if bias:
                 raise Exception('Bias for HyperConv is not supported by this implementation!')
 
-            x, y = torch.meshgrid(torch.arange(kernel_size[0]), torch.arange(kernel_size[1]), indexing='ij')
+            y, x = torch.meshgrid(torch.arange(kernel_size[0]) - 0.5 * kernel_size[0] + 0.5, torch.arange(kernel_size[1]) - 0.5 * kernel_size[1] + 0.5, indexing='ij')
 
-            # Concat to shape (batch, x, y, channel)
-            s = torch.concat([x[None, :, :], y[None, :, :]], dim=0)[None]
-            print(s.shape)
+            # Concat to shape (batch, channel y, x)
+            self.pos = torch.nn.Parameter(torch.concat([y[None, :, :], x[None, :, :]], dim=0)[None], requires_grad=False)
+
+            num_c = self.in_channels * self.out_channels
+            self.main = nn.Sequential(
+                nn.Conv2d(2, 16, (1, 1)),
+                nn.LeakyReLU(),
+                nn.Conv2d(16, 16, (1, 1)),
+                nn.LeakyReLU(),
+                nn.Conv2d(16, 4, (1, 1)),
+                nn.LeakyReLU(),
+                nn.Conv2d(4, num_c, (1, 1))
+            )
         else:
             self.main = nn.Conv2d(in_channels, out_channels, kernel_size, **kwargs)
 
     def forward(self, x):
-        return self.main(x)
+        if self.use_hyper_net:
+            cnn_weights = self.main(self.pos).reshape(self.out_channels, self.in_channels, self.pos.shape[2], self.pos.shape[3])
+            y = F.conv2d(x, cnn_weights, **self.kwargs)
+            return y
+        else:
+            return self.main(x)
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, ch, kernel_size):
+    def __init__(self, ch, kernel_size, use_hyper_conv=False):
         super().__init__()
         self.main = nn.Sequential(
             nn.BatchNorm2d(ch),
             nn.ReLU(),
-            HyperConv(ch, ch, kernel_size, padding='same', bias=False),
+            HyperConv(ch, ch, kernel_size, padding='same', bias=False, use_hyper_net=use_hyper_conv),
             nn.BatchNorm2d(ch),
             nn.ReLU(),
-            HyperConv(ch, ch, kernel_size, padding='same', bias=False),
+            HyperConv(ch, ch, kernel_size, padding='same', bias=False, use_hyper_net=use_hyper_conv),
         )
 
     def forward(self, x):
@@ -58,30 +79,30 @@ class ResidualBlock(nn.Module):
 
 
 class MNISTClassifier(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, use_hyper_conv=False):
         super().__init__()
         ch = 8
         kernel_size = (3, 3)
         self.main = nn.Sequential(
             nn.Conv2d(1, ch, (1, 1), padding='same'),
-            ResidualBlock(ch, kernel_size),
-            ResidualBlock(ch, kernel_size),
+            ResidualBlock(ch, kernel_size, use_hyper_conv=use_hyper_conv),
+            ResidualBlock(ch, kernel_size, use_hyper_conv=use_hyper_conv),
             nn.BatchNorm2d(ch),
             nn.ReLU(),
             nn.Conv2d(ch, ch*2, (1, 1), padding='same', bias=False),
             nn.MaxPool2d(2, 2),
-            ResidualBlock(ch*2, kernel_size),
-            ResidualBlock(ch*2, kernel_size),
+            ResidualBlock(ch*2, kernel_size, use_hyper_conv=use_hyper_conv),
+            ResidualBlock(ch*2, kernel_size, use_hyper_conv=use_hyper_conv),
             nn.BatchNorm2d(ch*2),
             nn.ReLU(),
             nn.Conv2d(ch*2, ch*4, (1, 1), padding='same', bias=False),
             nn.MaxPool2d(2, 2),
-            ResidualBlock(ch * 4, kernel_size),
-            ResidualBlock(ch * 4, kernel_size),
+            ResidualBlock(ch * 4, kernel_size, use_hyper_conv=use_hyper_conv),
+            ResidualBlock(ch * 4, kernel_size, use_hyper_conv=use_hyper_conv),
             nn.Conv2d(ch * 4, ch * 8, (1, 1), padding='same', bias=False),
             nn.MaxPool2d(2, 2),
-            ResidualBlock(ch * 8, kernel_size),
-            ResidualBlock(ch * 8, kernel_size),
+            ResidualBlock(ch * 8, kernel_size, use_hyper_conv=use_hyper_conv),
+            ResidualBlock(ch * 8, kernel_size, use_hyper_conv=use_hyper_conv),
             nn.BatchNorm2d(ch * 8),
             nn.ReLU(),
             nn.MaxPool2d((3, 3)),
@@ -128,7 +149,7 @@ def train_model(train_data, val_data, use_hype_conv=False):
     val_loader = DataLoader(val_data, batch_size=256)
 
     # model
-    model = MNISTClassifier()
+    model = MNISTClassifier(use_hype_conv)
 
     # training
     model_checkpoint = ModelCheckpoint(monitor='val_loss', mode='min')
@@ -157,6 +178,6 @@ def validate_model(model, val_data):
 
 if __name__ == '__main__':
     train_data, val_data = get_train_and_val_data()
-    model = train_model(train_data, val_data)
+    model = train_model(train_data, val_data, use_hype_conv=True)
     val_loss = validate_model(model, val_data)
     print(val_loss)
