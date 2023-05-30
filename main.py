@@ -1,10 +1,10 @@
 """
-Basic code taken from: https://www.pytorchlightning.ai/index.html#join-slack
+Code modified from autoencoder example: https://www.pytorchlightning.ai/index.html#join-slack
 """
-import io
 import shutil
 
 import torch
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import CSVLogger
 from torch import nn
@@ -16,21 +16,57 @@ from torchvision import transforms
 import pytorch_lightning as pl
 
 
+class ResidualBlock(nn.Module):
+    def __init__(self, ch, kernel_size):
+        super().__init__()
+        self.main = nn.Sequential(
+            nn.BatchNorm2d(ch),
+            nn.ReLU(),
+            nn.Conv2d(ch, ch, kernel_size, padding='same', bias=False),
+            nn.BatchNorm2d(ch),
+            nn.ReLU(),
+            nn.Conv2d(ch, ch, kernel_size, padding='same', bias=False),
+        )
+
+    def forward(self, x):
+        return self.main(x) + x
+
+
 class MNISTClassifier(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(28 * 28, 64),
+        ch = 8
+        kernel_size = (3, 3)
+        self.main = nn.Sequential(
+            nn.Conv2d(1, ch, kernel_size, padding='same', bias=False),
+            ResidualBlock(ch, kernel_size),
+            ResidualBlock(ch, kernel_size),
+            nn.BatchNorm2d(ch),
             nn.ReLU(),
-            nn.Linear(64, 3))
-        self.decoder = nn.Sequential(
-            nn.Linear(3, 64),
+            nn.Conv2d(ch, ch*2, kernel_size, padding='same', bias=False),
+            nn.MaxPool2d(2, 2),
+            ResidualBlock(ch*2, kernel_size),
+            ResidualBlock(ch*2, kernel_size),
+            nn.BatchNorm2d(ch*2),
             nn.ReLU(),
-            nn.Linear(64, 28 * 28))
+            nn.Conv2d(ch*2, ch*4, kernel_size, padding='same', bias=False),
+            nn.MaxPool2d(2, 2),
+            ResidualBlock(ch * 4, kernel_size),
+            ResidualBlock(ch * 4, kernel_size),
+            nn.Conv2d(ch * 4, ch * 8, kernel_size, padding='same', bias=False),
+            nn.MaxPool2d(2, 2),
+            ResidualBlock(ch * 8, kernel_size),
+            ResidualBlock(ch * 8, kernel_size),
+            nn.BatchNorm2d(ch * 8),
+            nn.ReLU(),
+            nn.MaxPool2d((3, 3)),
+            nn.Flatten(),
+            nn.Linear(ch * 8, 10)
+        )
 
     def forward(self, x):
-        embedding = self.encoder(x)
-        return embedding
+        x = self.main(x)
+        return x
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
@@ -38,20 +74,20 @@ class MNISTClassifier(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
-        x = x.view(x.size(0), -1)
-        z = self.encoder(x)
-        x_hat = self.decoder(z)
-        loss = F.mse_loss(x_hat, x)
+        pred = self(x)
+        loss = F.cross_entropy(pred, y)
+        acc = torch.mean(torch.eq(torch.argmax(pred, 1), y).float())
         self.log('train_loss', loss)
+        self.log('train_acc', acc)
         return loss
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
-        x = x.view(x.size(0), -1)
-        z = self.encoder(x)
-        x_hat = self.decoder(z)
-        loss = F.mse_loss(x_hat, x)
+        pred = self(x)
+        loss = F.cross_entropy(pred, y)
+        acc = torch.mean(torch.eq(torch.argmax(pred, 1), y).float())
         self.log('val_loss', loss)
+        self.log('val_acc', acc)
 
 
 def get_train_and_val_data():
@@ -70,18 +106,19 @@ def train_model(train_data, val_data, use_hype_conv=False):
     model = MNISTClassifier()
 
     # training
+    model_checkpoint = ModelCheckpoint(monitor='val_loss', mode='min')
     trainer = pl.Trainer(
         max_epochs=10,
         callbacks=[
-            EarlyStopping(monitor="val_loss", mode="min")
+            EarlyStopping(monitor="val_loss", mode="min"),
+            model_checkpoint
         ],
         logger=CSVLogger('.')
     )
     trainer.fit(model, train_loader, val_loader)
 
-    # Final validation score
-    best_model = MNISTClassifier.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
-
+    # Load best model
+    best_model = MNISTClassifier.load_from_checkpoint(model_checkpoint.best_model_path)
     return best_model
 
 
