@@ -17,7 +17,7 @@ import pytorch_lightning as pl
 
 
 class HyperConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, use_hyper_net=False, *args, **kwargs):
+    def __init__(self, in_channels, out_channels, kernel_size, bias=True, use_hyper_net=False, **kwargs):
         """
         :param in_channels: in channels of the convolution
         :param out_channels: out channels of the convolution
@@ -25,7 +25,17 @@ class HyperConv(nn.Module):
         :param kwargs:
         """
         super().__init__()
-        self.main = nn.Conv2d(in_channels, out_channels, kernel_size, **kwargs)
+        if use_hyper_net:
+            if bias:
+                raise Exception('Bias for HyperConv is not supported by this implementation!')
+
+            x, y = torch.meshgrid(torch.arange(kernel_size[0]), torch.arange(kernel_size[1]), indexing='ij')
+
+            # Concat to shape (batch, x, y, channel)
+            s = torch.concat([x[None, :, :], y[None, :, :]], dim=0)[None]
+            print(s.shape)
+        else:
+            self.main = nn.Conv2d(in_channels, out_channels, kernel_size, **kwargs)
 
     def forward(self, x):
         return self.main(x)
