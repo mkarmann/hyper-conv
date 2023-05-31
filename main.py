@@ -1,6 +1,7 @@
 """
 Code modified from autoencoder example: https://www.pytorchlightning.ai/index.html#join-slack
 """
+import os.path
 import shutil
 
 import torch
@@ -46,17 +47,23 @@ class HyperConv(nn.Module):
                 nn.LeakyReLU(),
                 nn.Conv2d(16, 16, (1, 1)),
                 nn.LeakyReLU(),
-                nn.Conv2d(16, 16, (1, 1)),
+                nn.Conv2d(16, 4, (1, 1)),
                 nn.LeakyReLU(),
-                nn.Conv2d(16, num_c, (1, 1))
+                nn.Conv2d(4, num_c, (1, 1), bias=False),
+                # nn.BatchNorm2d(num_c)           # This layer was not included in the original, but provides more stability making the weights close to a std of 1 around zero
             )
         else:
             self.main = nn.Conv2d(in_channels, out_channels, kernel_size, **kwargs)
 
+    def get_weights(self):
+        if self.use_hyper_net:
+            return self.main(self.pos).reshape(self.out_channels, self.in_channels, self.pos.shape[2], self.pos.shape[3])
+        else:
+            return self.main.weight
+
     def forward(self, x):
         if self.use_hyper_net:
-            cnn_weights = self.main(self.pos).reshape(self.out_channels, self.in_channels, self.pos.shape[2], self.pos.shape[3])
-            y = F.conv2d(x, cnn_weights, **self.kwargs)
+            y = F.conv2d(x, self.get_weights(), **self.kwargs)
             return y
         else:
             return self.main(x)
@@ -79,30 +86,30 @@ class ResidualBlock(nn.Module):
 
 
 class MNISTClassifier(pl.LightningModule):
-    def __init__(self, use_hyper_conv=False):
+    def __init__(self, kernel=(5,5), use_hyper_conv=False):
         super().__init__()
+        self.save_hyperparameters()
         ch = 8
-        kernel_size = (3, 3)
         self.main = nn.Sequential(
             nn.Conv2d(1, ch, (1, 1), padding='same'),
-            ResidualBlock(ch, kernel_size, use_hyper_conv=use_hyper_conv),
-            ResidualBlock(ch, kernel_size, use_hyper_conv=use_hyper_conv),
+            ResidualBlock(ch, kernel, use_hyper_conv=self.hparams.use_hyper_conv),
+            ResidualBlock(ch, kernel, use_hyper_conv=self.hparams.use_hyper_conv),
             nn.BatchNorm2d(ch),
             nn.ReLU(),
             nn.Conv2d(ch, ch*2, (1, 1), padding='same', bias=False),
             nn.MaxPool2d(2, 2),
-            ResidualBlock(ch*2, kernel_size, use_hyper_conv=use_hyper_conv),
-            ResidualBlock(ch*2, kernel_size, use_hyper_conv=use_hyper_conv),
+            ResidualBlock(ch*2, kernel, use_hyper_conv=self.hparams.use_hyper_conv),
+            ResidualBlock(ch*2, kernel, use_hyper_conv=self.hparams.use_hyper_conv),
             nn.BatchNorm2d(ch*2),
             nn.ReLU(),
             nn.Conv2d(ch*2, ch*4, (1, 1), padding='same', bias=False),
             nn.MaxPool2d(2, 2),
-            ResidualBlock(ch * 4, kernel_size, use_hyper_conv=use_hyper_conv),
-            ResidualBlock(ch * 4, kernel_size, use_hyper_conv=use_hyper_conv),
+            ResidualBlock(ch * 4, kernel, use_hyper_conv=self.hparams.use_hyper_conv),
+            ResidualBlock(ch * 4, kernel, use_hyper_conv=self.hparams.use_hyper_conv),
             nn.Conv2d(ch * 4, ch * 8, (1, 1), padding='same', bias=False),
             nn.MaxPool2d(2, 2),
-            ResidualBlock(ch * 8, kernel_size, use_hyper_conv=use_hyper_conv),
-            ResidualBlock(ch * 8, kernel_size, use_hyper_conv=use_hyper_conv),
+            ResidualBlock(ch * 8, kernel, use_hyper_conv=self.hparams.use_hyper_conv),
+            ResidualBlock(ch * 8, kernel, use_hyper_conv=self.hparams.use_hyper_conv),
             nn.BatchNorm2d(ch * 8),
             nn.ReLU(),
             nn.MaxPool2d((3, 3)),
@@ -117,7 +124,7 @@ class MNISTClassifier(pl.LightningModule):
     def configure_optimizers(self):
         # Lower lr for more stability (1e-3 created to much variance with only hypernet)
         # Maybe using weight decay: weight_decay=1e-5
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-5)
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-6)
         return optimizer
 
     def training_step(self, train_batch, batch_idx):
@@ -146,24 +153,27 @@ def get_train_and_val_data():
     return train_data, val_data
 
 
-def train_model(train_data, val_data, use_hype_conv=False):
+def train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=False):
     train_loader = DataLoader(train_data, batch_size=64)
     val_loader = DataLoader(val_data, batch_size=256)
 
     # model
-    model = MNISTClassifier(use_hype_conv)
+    model = MNISTClassifier(kernel=kernel, use_hyper_conv=use_hype_conv)
 
     # training
     model_checkpoint = ModelCheckpoint(monitor='val_loss', mode='min')
     trainer = pl.Trainer(
-        max_epochs=10,
+        max_epochs=50,
         callbacks=[
-            EarlyStopping(monitor="val_loss", mode="min"),
+            EarlyStopping(monitor="val_loss", mode="min", patience=5),
             model_checkpoint
         ],
         logger=CSVLogger('.')
     )
     trainer.fit(model, train_loader, val_loader)
+
+    # Copy best checkpoint
+    shutil.copy(model_checkpoint.best_model_path, os.path.join(os.path.dirname(os.path.dirname(model_checkpoint.best_model_path)), 'best.ckpt'))
 
     # Load best model
     best_model = MNISTClassifier.load_from_checkpoint(model_checkpoint.best_model_path)
@@ -172,7 +182,7 @@ def train_model(train_data, val_data, use_hype_conv=False):
 
 def validate_model(model, val_data):
     val_loader = DataLoader(val_data, batch_size=256)
-    trainer = pl.Trainer()
+    trainer = pl.Trainer(logger=CSVLogger('tmp'))
     val_loss = trainer.validate(model, val_loader)[0]['val_loss']
     shutil.rmtree(trainer.logger.log_dir)
     return val_loss
@@ -180,6 +190,5 @@ def validate_model(model, val_data):
 
 if __name__ == '__main__':
     train_data, val_data = get_train_and_val_data()
-    model = train_model(train_data, val_data, use_hype_conv=True)
+    model = train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=True)
     val_loss = validate_model(model, val_data)
-    print(val_loss)

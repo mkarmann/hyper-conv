@@ -1,2 +1,4 @@
 pytorch-lightning
 torchvision
+plotly
+pandas
