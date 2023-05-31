@@ -44,13 +44,13 @@ class HyperConv(nn.Module):
             num_c = self.in_channels * self.out_channels
             self.main = nn.Sequential(
                 nn.Conv2d(2, 16, (1, 1)),
-                nn.LeakyReLU(),
+                nn.LeakyReLU(0.1),
                 nn.Conv2d(16, 16, (1, 1)),
-                nn.LeakyReLU(),
-                nn.Conv2d(16, 4, (1, 1)),
-                nn.LeakyReLU(),
-                nn.Conv2d(4, num_c, (1, 1), bias=False),
-                # nn.BatchNorm2d(num_c)           # This layer was not included in the original, but provides more stability making the weights close to a std of 1 around zero
+                nn.LeakyReLU(0.1),
+                nn.Conv2d(16, 16, (1, 1)),
+                nn.LeakyReLU(0.1),
+                nn.Conv2d(16, num_c, (1, 1), bias=False),
+                nn.BatchNorm2d(num_c)           # This layer was not included in the original, but provides more stability making the weights close to a std of 1 around zero
             )
         else:
             self.main = nn.Conv2d(in_channels, out_channels, kernel_size, **kwargs)
@@ -163,9 +163,9 @@ def train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=False):
     # training
     model_checkpoint = ModelCheckpoint(monitor='val_loss', mode='min')
     trainer = pl.Trainer(
-        max_epochs=50,
+        max_epochs=100,
         callbacks=[
-            EarlyStopping(monitor="val_loss", mode="min", patience=5),
+            EarlyStopping(monitor="val_loss", mode="min", patience=10),
             model_checkpoint
         ],
         logger=CSVLogger('.')
@@ -190,5 +190,5 @@ def validate_model(model, val_data):
 
 if __name__ == '__main__':
     train_data, val_data = get_train_and_val_data()
-    model = train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=True)
+    model = train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=False)
     val_loss = validate_model(model, val_data)

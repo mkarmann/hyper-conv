@@ -21,6 +21,6 @@ def load_csv(fname):
 
 
 if __name__ == '__main__':
-    df = load_csv('lightning_logs/version_0/metrics.csv')
+    df = load_csv('lightning_logs/version_normal/metrics.csv')
     fig = px.line(df, x="epoch", y="loss", color='set', title='Life expectancy in Canada', log_y=True)
     fig.show()
