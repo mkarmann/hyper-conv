@@ -190,5 +190,5 @@ def validate_model(model, val_data):
 
 if __name__ == '__main__':
     train_data, val_data = get_train_and_val_data()
-    model = train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=False)
+    model = train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=True)
     val_loss = validate_model(model, val_data)

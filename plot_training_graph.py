@@ -20,7 +20,37 @@ def load_csv(fname):
     return pd.concat([df_train, df_val])
 
 
-if __name__ == '__main__':
-    df = load_csv('lightning_logs/version_normal/metrics.csv')
-    fig = px.line(df, x="epoch", y="loss", color='set', title='Life expectancy in Canada', log_y=True)
+def plot_multiple(files, names, colors):
+    dataframes = []
+    color_map = dict()
+    for file, name, color in zip(files, names, colors):
+        df = load_csv(file)
+        df['name'] = name + ' ' + df['set']
+        color_map[name + ' train'] = color
+        color_map[name + ' val'] = color
+        df['dashes'] = df['set']
+        df['dashes'] = df['dashes'].replace('train', 'dash')
+        df['dashes'] = df['dashes'].replace('val', 'solid')
+        dataframes.append(df)
+
+    df = pd.concat(dataframes)
+    fig = px.line(
+        df,
+        x="epoch",
+        y="loss",
+        color='name',
+        title='Training losses',
+        log_y=True,
+        color_discrete_map=color_map,
+        line_dash='dashes',
+        line_dash_map='identity'
+    )
     fig.show()
+
+
+if __name__ == '__main__':
+    plot_multiple(
+        files=['lightning_logs/version_normal/metrics.csv', 'lightning_logs/version_hyper/metrics.csv'],
+        names=['normal', 'hyperConv'],
+        colors=['slategray', px.colors.qualitative.Plotly[0]]
+    )
