@@ -145,9 +145,10 @@ class MNISTClassifier(pl.LightningModule):
         self.log('val_acc', acc)
 
 
-def get_train_and_val_data():
+def get_train_and_val_data(seed=1):
     # data
     dataset = MNIST('', train=True, download=True, transform=transforms.ToTensor())
+    torch.manual_seed(seed)
     train_data, val_data = random_split(dataset, [55000, 5000])
 
     return train_data, val_data
@@ -184,6 +185,14 @@ def validate_model(model, val_data):
     val_loader = DataLoader(val_data, batch_size=256)
     trainer = pl.Trainer(logger=CSVLogger('tmp'))
     val_loss = trainer.validate(model, val_loader)[0]['val_loss']
+    shutil.rmtree(trainer.logger.log_dir)
+    return val_loss
+
+
+def validate_model_accuracy(model, val_data):
+    val_loader = DataLoader(val_data, batch_size=256)
+    trainer = pl.Trainer(logger=CSVLogger('tmp'))
+    val_loss = trainer.validate(model, val_loader)[0]['val_acc']
     shutil.rmtree(trainer.logger.log_dir)
     return val_loss
 
