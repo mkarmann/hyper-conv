@@ -3,6 +3,8 @@ import pandas as pd
 from main import get_train_and_val_data, validate_model, MNISTClassifier, validate_model_accuracy
 import torch
 import plotly.express as px
+import plotly.io as pio
+pio.templates.default = "none"
 
 
 def add_noise(data, noise_type, amount):
@@ -71,6 +73,7 @@ if __name__ == '__main__':
         x='amount',
         y='accuracy',
         color='Convolution Type',
+        color_discrete_map={'normal': 'blue', 'hyper': 'green'},
         title='Pepper Noise'
     )
     fig.update_xaxes(title_text="Amount")
@@ -82,6 +85,7 @@ if __name__ == '__main__':
         x='amount',
         y='accuracy',
         color='Convolution Type',
+        color_discrete_map={'normal': 'blue', 'hyper': 'green'},
         title='Gauss Noise'
     )
     fig.update_xaxes(title_text="Std")
