@@ -1,5 +1,5 @@
 """
-Plotting weights of hyper and normal convolutions
+Plotting weights of hyper and normal convolutions.
 
 This script first load a trained MNISTClassifier model and then extracts
 the weights of a convolutional layer

@@ -44,7 +44,6 @@ def add_noise(data, noise_type, amount):
 
 
 if __name__ == '__main__':
-
     # Load the precomputed out/noise.csv file
     load_csv = True
 

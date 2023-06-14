@@ -1,5 +1,5 @@
 """
-Plotting the training progress
+Plotting the training progress.
 
 This is not used in the blog post but might still be interesting to look at.
 

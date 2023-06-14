@@ -32,7 +32,7 @@ class HyperConv(nn.Module):
     Hyper Convolution Layer
 
     If the use_hyper_net is set to true, weights will be predicted by a hyper net
-    if not, it will be like a default convolutional layer
+    if not, it will be like a default convolutional layer.
     """
     def __init__(self, in_channels, out_channels, kernel_size, bias=False, use_hyper_net=True, **kwargs):
         """

@@ -1,5 +1,5 @@
 """
-This script is used to plot a heatmap of data from the paper.
+This script is used to plot data from the paper as a heatmap.
 
 It does not use actual data from the MNIST training of this repository
 but I wanted to include it, as it was used to create a plot for the presentation.
