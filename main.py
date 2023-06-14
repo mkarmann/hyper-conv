@@ -18,12 +18,20 @@ import pytorch_lightning as pl
 
 
 class HyperConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, bias=True, use_hyper_net=False, **kwargs):
+    """
+    Hyper Convolution Layer
+
+    If the use_hyper_net is set to true, weights will be predicted by a hyper net
+    if not, it will be like a default convolutional layer
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, bias=False, use_hyper_net=True, **kwargs):
         """
         :param in_channels: in channels of the convolution
         :param out_channels: out channels of the convolution
         :param kernel_size: kernel size of the convolution
-        :param kwargs:
+        :param bias: wether or not the convolution uses a bias term, this is not supported in combination with
+            use_hyper_net=True
+        :param kwargs: Args passed to the pytorch convolution function
         """
         super().__init__()
 
@@ -36,11 +44,12 @@ class HyperConv(nn.Module):
             if bias:
                 raise Exception('Bias for HyperConv is not supported by this implementation!')
 
+            # Create position tensor with shape (batch, channel y, x)
+            # Which is (1, 2, kernel_size_y, kernel_size_x)
             y, x = torch.meshgrid(torch.arange(kernel_size[0]) - 0.5 * kernel_size[0] + 0.5, torch.arange(kernel_size[1]) - 0.5 * kernel_size[1] + 0.5, indexing='ij')
-
-            # Concat to shape (batch, channel y, x)
             self.pos = torch.nn.Parameter(torch.concat([y[None, :, :], x[None, :, :]], dim=0)[None], requires_grad=False)
 
+            # The hyper net architecture. Just like described in the paper this is implemented as a convolution
             num_c = self.in_channels * self.out_channels
             self.main = nn.Sequential(
                 nn.Conv2d(2, 16, (1, 1)),
@@ -50,12 +59,19 @@ class HyperConv(nn.Module):
                 nn.Conv2d(16, 16, (1, 1)),
                 nn.LeakyReLU(0.1),
                 nn.Conv2d(16, num_c, (1, 1), bias=False),
-                nn.BatchNorm2d(num_c)           # This layer was not included in the original, but provides more stability making the weights close to a std of 1 around zero
+                nn.BatchNorm2d(num_c)           # This layer was not included in the original implementation, but provides more stability during training and making the weights close to a std of 1 around a mean of zero
             )
         else:
+            # If no hyper convolution, just take a regular convolution
             self.main = nn.Conv2d(in_channels, out_channels, kernel_size, **kwargs)
 
-    def get_weights(self):
+    def get_weights(self) -> torch.Tensor:
+        """
+        Get the weights of the convolution.
+
+        If this layer uses hyper convolution, it will return the predicted weights from the hyper net
+        :return: weight tensor in the shape of (out_channels, in_channels, kernel_height, kernel_width)
+        """
         if self.use_hyper_net:
             return self.main(self.pos).reshape(self.out_channels, self.in_channels, self.pos.shape[2], self.pos.shape[3])
         else:
@@ -63,14 +79,23 @@ class HyperConv(nn.Module):
 
     def forward(self, x):
         if self.use_hyper_net:
-            y = F.conv2d(x, self.get_weights(), **self.kwargs)
-            return y
+            return F.conv2d(x, self.get_weights(), **self.kwargs)
         else:
             return self.main(x)
 
 
 class ResidualBlock(nn.Module):
+    """
+    Residual block with the option to use hyper convolutions
+    """
     def __init__(self, ch, kernel_size, use_hyper_conv=False):
+        """
+        Initialization
+
+        :param ch: Number of input and output channels
+        :param kernel_size: Kernel size for both convoluation in the residual block
+        :param use_hyper_conv: If true, the block will use hyper convolutions
+        """
         super().__init__()
         self.main = nn.Sequential(
             nn.BatchNorm2d(ch),
@@ -86,6 +111,11 @@ class ResidualBlock(nn.Module):
 
 
 class MNISTClassifier(pl.LightningModule):
+    """
+    Classification model
+
+    It consists of 4 times 2 residual blocks with 1x1 convolutions and max pooling in between.
+    """
     def __init__(self, kernel=(5,5), use_hyper_conv=False):
         super().__init__()
         self.save_hyperparameters()
@@ -122,8 +152,8 @@ class MNISTClassifier(pl.LightningModule):
         return x
 
     def configure_optimizers(self):
-        # Lower lr for more stability (1e-3 created to much variance with only hypernet)
-        # Maybe using weight decay: weight_decay=1e-5
+        # Lower lr for more stability (1e-3 created to much variance when training the hypernet)
+        # Also added a bit of weight decay
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-6)
         return optimizer
 
@@ -146,7 +176,12 @@ class MNISTClassifier(pl.LightningModule):
 
 
 def get_train_and_val_data(seed=1):
-    # data
+    """
+    Getting fixed train and test data split (if seed is kept the same)
+
+    :param seed: Seed for the split
+    :return: tuple with (train_data, test_data)
+    """
     dataset = MNIST('', train=True, download=True, transform=transforms.ToTensor())
     torch.manual_seed(seed)
     train_data, val_data = random_split(dataset, [55000, 5000])
@@ -154,7 +189,16 @@ def get_train_and_val_data(seed=1):
     return train_data, val_data
 
 
-def train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=False):
+def train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=False) -> MNISTClassifier:
+    """
+    Train a classification model
+
+    :param train_data: Training data
+    :param val_data: Validation data
+    :param kernel: kernel size for all residual block convolutions of the model
+    :param use_hype_conv: If true, uses hyper convolutions for the residual blocks in the model
+    :return: model with best validation loss
+    """
     train_loader = DataLoader(train_data, batch_size=64)
     val_loader = DataLoader(val_data, batch_size=256)
 
@@ -181,23 +225,21 @@ def train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=False):
     return best_model
 
 
-def validate_model(model, val_data):
-    val_loader = DataLoader(val_data, batch_size=256)
-    trainer = pl.Trainer(logger=CSVLogger('tmp'))
-    val_loss = trainer.validate(model, val_loader)[0]['val_loss']
-    shutil.rmtree(trainer.logger.log_dir)
-    return val_loss
+def evaluate_model_accuracy(model, data) -> float:
+    """
+    Get the models accuracy on data
 
-
-def validate_model_accuracy(model, val_data):
-    val_loader = DataLoader(val_data, batch_size=256)
+    :param model: model to test
+    :param data: Data to test
+    :return: accuracy
+    """
+    val_loader = DataLoader(data, batch_size=256)
     trainer = pl.Trainer(logger=CSVLogger('tmp'))
-    val_loss = trainer.validate(model, val_loader)[0]['val_acc']
+    acc = trainer.validate(model, val_loader)[0]['val_acc']
     shutil.rmtree(trainer.logger.log_dir)
-    return val_loss
+    return acc
 
 
 if __name__ == '__main__':
     train_data, val_data = get_train_and_val_data()
     model = train_model(train_data, val_data, kernel=(5, 5), use_hype_conv=True)
-    val_loss = validate_model(model, val_data)

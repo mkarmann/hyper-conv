@@ -1,8 +1,23 @@
+"""
+Plotting the training progress
+
+This is not used in the blog post but might still be interesting to look at.
+
+It was also used for debugging the training process, as the training with
+hyper convolutions was not as stable as expected.
+"""
 import plotly.express as px
 import pandas as pd
 
 
-def load_csv_train_or_val(fname, load_training=False):
+def load_csv_train_or_val(fname, load_training=False) -> pd.DataFrame:
+    """
+    Load a lightning_log csv file but only train or validation data
+
+    :param fname: path to the file
+    :param load_training: If true, load the training metrics, if false load the validation ones.
+    :return: Dataframe of only train or validation data
+    """
     loss = 'train_loss' if load_training else 'val_loss'
     df = pd.read_csv(fname, usecols=[loss, 'epoch', 'step'])
     df = df.dropna()
@@ -12,7 +27,13 @@ def load_csv_train_or_val(fname, load_training=False):
     return df
 
 
-def load_csv(fname):
+def load_csv(fname) -> pd.DataFrame:
+    """
+    Load a lightning_log csv file with train and validation
+
+    :param fname: path to the file
+    :return: Dataframe with train and validation set
+    """
     df_train = load_csv_train_or_val(fname, True)
     df_train['set'] = 'train'
     df_val = load_csv_train_or_val(fname, False)
@@ -21,6 +42,14 @@ def load_csv(fname):
 
 
 def plot_multiple(files, names, colors):
+    """
+    Plot multiple runs in the same plot
+
+    :param files: List of csv log file paths
+    :param names: List of names for the plot for each csv file
+    :param colors: List of colours for each csv file
+    :return:
+    """
     dataframes = []
     color_map = dict()
     for file, name, color in zip(files, names, colors):

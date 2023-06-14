@@ -1,6 +1,13 @@
+"""
+Load the hyper and normal model and compare their performance when noise is added
+
+A previous run is already stored in out/pepper_noise.csv
+
+So this one will be loaded by default to make plots faster
+"""
 import pandas as pd
 
-from main import get_train_and_val_data, validate_model, MNISTClassifier, validate_model_accuracy
+from main import get_train_and_val_data, MNISTClassifier, evaluate_model_accuracy
 import torch
 import plotly.express as px
 import plotly.io as pio
@@ -37,11 +44,16 @@ def add_noise(data, noise_type, amount):
 
 
 if __name__ == '__main__':
+
+    # Load the precomputed out/noise.csv file
     load_csv = True
+
+    # If True and the csv is not loaded
+    # store the test results in out/noise.csv file
     overwrite_csv_if_not_loading = False
 
     if load_csv:
-        df = pd.read_csv('out/pepper_noise.csv')
+        df = pd.read_csv('out/noise.csv')
     else:
         train_data, val_data = get_train_and_val_data()
         model_normal = MNISTClassifier.load_from_checkpoint('lightning_logs/version_normal/best.ckpt')
@@ -54,7 +66,7 @@ if __name__ == '__main__':
             for noise_type, noise_unit in [('pepper', 'amount'), ('gauss', 'std')]:
                 noisy_val = add_noise(val_data, noise_type, amount)
                 for model, model_type in [(model_normal, 'normal'), (model_hyper, 'hyper')]:
-                    acc = validate_model_accuracy(model, noisy_val)
+                    acc = evaluate_model_accuracy(model, noisy_val)
                     data.append({
                         'noiseType': noise_type,
                         'amount': amount,
@@ -64,7 +76,7 @@ if __name__ == '__main__':
                     })
         df = pd.DataFrame(data)
         if overwrite_csv_if_not_loading:
-            df.to_csv('out/pepper_noise.csv', index=False)
+            df.to_csv('out/noise.csv', index=False)
 
     df['Convolution Type'] = df['modelType']
 

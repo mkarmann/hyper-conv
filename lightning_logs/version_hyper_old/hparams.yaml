@@ -1,0 +1,4 @@
+kernel: !!python/tuple
+- 5
+- 5
+use_hyper_conv: true
