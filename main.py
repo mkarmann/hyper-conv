@@ -1,5 +1,15 @@
 """
-Code modified from autoencoder example: https://www.pytorchlightning.ai/index.html#join-slack
+The main script for training the Classification models
+
+It contains the implementation of the Hyper-Network and Hyper-Convolutions as well as the classifier
+The MNIST data is automatically downloaded and then split in train and validation sets.
+
+After the training is finished, the trained models can be found in the lightning_logs folder.
+There are also results from previous runs stored already.
+
+The entire training pipeline is using pytorch lightning and therefore
+the start code was taken form the example of: https://www.pytorchlightning.ai/index.html#join-slack
+The Hyper-Network's architecture was looked up from the authors repository: https://github.com/tym002/Hyper-Convolution
 """
 import os.path
 import shutil
