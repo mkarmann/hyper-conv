@@ -1,6 +1,6 @@
 # Hyper-Convolutions tested on MNIST
 ![Illustration of the Hyper-Network](_img/hypernet_concept.png)
-This repository is the implementation used for the BlogPost of my seminar at TUM.
+This repository is the implementation used for the [BlogPost](https://wiki.tum.de/display/mlneuro/12%3A+Hyper-convolutions+via+implicit+kernels+for+medical+image+analysis) of my seminar at TUM.
 
 The paper version that this is based on was the paper uploaded on Arxiv: [Hyper-Convolutions via Implicit Kernels for Medical Imaging](https://arxiv.org/abs/2202.02701)
 by Tianyu Ma, Alan Q. Wang, Adrian V. Dalca, Mert R. Sabuncu.
